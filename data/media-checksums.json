@@ -1,0 +1,146 @@
+[
+  {
+    "clipId": "listen",
+    "url": "/media/listen.mp4",
+    "bytes": 700138,
+    "sha256": "2002e3c93d5c32df0938beb6edc87bdbf53c69e1a7681e298ab31bd304ee8c1c"
+  },
+  {
+    "clipId": "greeting",
+    "url": "/media/greeting.mp4",
+    "bytes": 1072452,
+    "sha256": "e9aa57b0afdf32aa5f41c01116ec89abd03561aa9e84e53a48ddbcb9c57b6749"
+  },
+  {
+    "clipId": "mechanism",
+    "url": "/media/mechanism.mp4",
+    "bytes": 1508525,
+    "sha256": "f167870951661a8ef92b72e3233f7619b50fd6886c42e9171b41bc3c4872fd55"
+  },
+  {
+    "clipId": "capabilities",
+    "url": "/media/capabilities.mp4",
+    "bytes": 1458146,
+    "sha256": "3b06741707f164bc0aef9347e0a062fbd1e19c35f3f5cf93c7504c664dfbc2de"
+  },
+  {
+    "clipId": "thinking",
+    "url": "/media/thinking.mp4",
+    "bytes": 608283,
+    "sha256": "124672a3d8ca5c25eebdb52f6da244c58cec4a53ae8ba2be532217353ed04c38"
+  },
+  {
+    "clipId": "out-of-scope",
+    "url": "/media/out-of-scope.mp4",
+    "bytes": 1464611,
+    "sha256": "ca3d8ecffde114cfe24245758f1ef859bd2021ba469a4f86983781034aa82eac"
+  },
+  {
+    "clipId": "greeting-alt",
+    "url": "/media/greeting-alt.mp4",
+    "bytes": 869248,
+    "sha256": "b4aa6a1193ba762c165f4139ae953112de8288381c52e48899ee83b9f4e0ba63"
+  },
+  {
+    "clipId": "clarify",
+    "url": "/media/clarify.mp4",
+    "bytes": 1094871,
+    "sha256": "08f6fe1b53943223bb09ba54bfed1ef794702baccafd11591d63439fe7ffa993"
+  },
+  {
+    "clipId": "acknowledge",
+    "url": "/media/acknowledge.mp4",
+    "bytes": 584999,
+    "sha256": "52e19fde4c2972a9a3adc4b65fa3b62a1146634fefc605dfb75ed09429cc4308"
+  },
+  {
+    "clipId": "identity",
+    "url": "/media/identity.mp4",
+    "bytes": 1465468,
+    "sha256": "078a4b61a111e2e3aeb421fd34d8a636ca67e901684de68ec21c967a696ead32"
+  },
+  {
+    "clipId": "jev",
+    "url": "/media/jev-revised.mp4",
+    "bytes": 1434907,
+    "sha256": "6726072320ab44e4f7f619c33acfbe371e3e58cfcc225f1e3a8e1076243753fe"
+  },
+  {
+    "clipId": "hypit",
+    "url": "/media/hypit.mp4",
+    "bytes": 1471228,
+    "sha256": "5739ba4d3fb6da44080290af6019f00d807a15fc9a5a89ae56c133b057ad7643"
+  },
+  {
+    "clipId": "latency",
+    "url": "/media/latency.mp4",
+    "bytes": 1408831,
+    "sha256": "967be9668a9878965981e2c5accc395ec01a851b58bf34b5eff8a6811a2c0cb9"
+  },
+  {
+    "clipId": "interrupt",
+    "url": "/media/interrupt.mp4",
+    "bytes": 586631,
+    "sha256": "ef96b6ff4d48eb4177e718c87c49ebb168a0b01b8fa101f57cb9fc3dbb379e3a"
+  },
+  {
+    "clipId": "voice",
+    "url": "/media/voice.mp4",
+    "bytes": 1307268,
+    "sha256": "6f5b6b2cd8cb26c255620dce1232e4bbf0da3688817387dc6a34d4eb10315337"
+  },
+  {
+    "clipId": "batch",
+    "url": "/media/batch.mp4",
+    "bytes": 1390423,
+    "sha256": "7f530eff1e0b6e5660da95186b6d2cbb30aa8c86f4e5cb727028c0dbe2beb3d2"
+  },
+  {
+    "clipId": "customize",
+    "url": "/media/customize.mp4",
+    "bytes": 1347799,
+    "sha256": "c1c813090ceb2c4d0c8d20487b2c88ade67e0a87be63f2215ab709e2e0288c4c"
+  },
+  {
+    "clipId": "continuity",
+    "url": "/media/continuity.mp4",
+    "bytes": 1336481,
+    "sha256": "6834b784a8aee04e260bd67315bd8a58ab01509ce4e0cb290a9f124f5625a0f2"
+  },
+  {
+    "clipId": "pricing",
+    "url": "/media/pricing.mp4",
+    "bytes": 1432201,
+    "sha256": "b0b14e9c1172ec48e809372bc8bbcbd7fbdf1057b0fd6024c0ba6851630028d0"
+  },
+  {
+    "clipId": "privacy",
+    "url": "/media/privacy.mp4",
+    "bytes": 1547465,
+    "sha256": "7299fa701881e008c47444e51c6b45cfb08701c2fa42e143754dfd8ab7df64f3"
+  },
+  {
+    "clipId": "integration",
+    "url": "/media/integration.mp4",
+    "bytes": 1477291,
+    "sha256": "63bc47238fbcacd4ef80f90f9f78a450e53ccc686ed9c47caf76e530500ed5f5"
+  },
+  {
+    "clipId": "example",
+    "url": "/media/example.mp4",
+    "bytes": 1490209,
+    "sha256": "f4c906c9dbe61aba3468ce51bf92efca37f576c57a13497ec23b4ea8a149336c"
+  },
+  {
+    "clipId": "thanks",
+    "url": "/media/thanks.mp4",
+    "bytes": 742068,
+    "sha256": "23fe368f06928b2f129051e9313887b0f0e5f53262002b1b88ed9f6a370accdf"
+  },
+  {
+    "clipId": "goodbye",
+    "url": "/media/goodbye.mp4",
+    "bytes": 764400,
+    "sha256": "7d13a2b07d6056a54f59fea57da7b9d03651e03adc388d572c5e3698eb3ddae4"
+  }
+]

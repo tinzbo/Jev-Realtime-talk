@@ -1,0 +1,41 @@
+{
+  "name": "xtasy-interactive-avatar",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.15.0" },
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false --env-file-if-exists=.env server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx --env-file-if-exists=.env server/index.ts --production",
+    "test": "tsx --test tests/*.test.ts",
+    "check:media": "tsx scripts/check-media.ts",
+    "production:plan": "tsx --env-file-if-exists=.env scripts/produce.ts plan",
+    "production:sample": "tsx --env-file-if-exists=.env scripts/produce.ts sample",
+    "production:batch": "tsx --env-file-if-exists=.env scripts/produce.ts batch",
+    "production:collect": "tsx --env-file-if-exists=.env scripts/produce.ts collect",
+    "hypit:export": "tsx scripts/export-hypit.ts",
+    "production:verify": "tsx scripts/verify-media.ts",
+    "production:accept": "tsx --env-file-if-exists=.env scripts/produce.ts accept",
+    "production:package": "tsx scripts/package-videos.ts"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "0.6.0",
+    "express": "^5.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^4.1.5",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@hypit/hypit": "0.2.12",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.3"
+  }
+}

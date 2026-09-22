@@ -1,0 +1,194 @@
+[
+  {
+    "clipId": "listen",
+    "url": "/media/listen.mp4",
+    "duration": 5.033333333333333,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:34:02.544Z"
+  },
+  {
+    "clipId": "greeting",
+    "url": "/media/greeting.mp4",
+    "duration": 7.1,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:34:44.234Z"
+  },
+  {
+    "clipId": "mechanism",
+    "url": "/media/mechanism.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:38:00.717Z"
+  },
+  {
+    "clipId": "capabilities",
+    "url": "/media/capabilities.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:41:56.857Z"
+  },
+  {
+    "clipId": "thinking",
+    "url": "/media/thinking.mp4",
+    "duration": 5.033333333333333,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:42:14.625Z"
+  },
+  {
+    "clipId": "out-of-scope",
+    "url": "/media/out-of-scope.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:44:16.939Z"
+  },
+  {
+    "clipId": "greeting-alt",
+    "url": "/media/greeting-alt.mp4",
+    "duration": 6.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:44:34.867Z"
+  },
+  {
+    "clipId": "clarify",
+    "url": "/media/clarify.mp4",
+    "duration": 8.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:45:06.678Z"
+  },
+  {
+    "clipId": "acknowledge",
+    "url": "/media/acknowledge.mp4",
+    "duration": 4.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:45:21.838Z"
+  },
+  {
+    "clipId": "identity",
+    "url": "/media/identity.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:47:47.533Z"
+  },
+  {
+    "clipId": "jev",
+    "url": "/media/jev-revised.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:57:56.684505+00:00"
+  },
+  {
+    "clipId": "hypit",
+    "url": "/media/hypit.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:48:34.927Z"
+  },
+  {
+    "clipId": "latency",
+    "url": "/media/latency.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:49:02.593Z"
+  },
+  {
+    "clipId": "interrupt",
+    "url": "/media/interrupt.mp4",
+    "duration": 4.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:51:00.527Z"
+  },
+  {
+    "clipId": "voice",
+    "url": "/media/voice.mp4",
+    "duration": 9.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:51:24.188Z"
+  },
+  {
+    "clipId": "batch",
+    "url": "/media/batch.mp4",
+    "duration": 9.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:51:53.617Z"
+  },
+  {
+    "clipId": "customize",
+    "url": "/media/customize.mp4",
+    "duration": 9.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:53:34.148Z"
+  },
+  {
+    "clipId": "continuity",
+    "url": "/media/continuity.mp4",
+    "duration": 9.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:54:03.033Z"
+  },
+  {
+    "clipId": "pricing",
+    "url": "/media/pricing.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:54:32.560Z"
+  },
+  {
+    "clipId": "privacy",
+    "url": "/media/privacy.mp4",
+    "duration": 11.1,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:55:28.893Z"
+  },
+  {
+    "clipId": "integration",
+    "url": "/media/integration.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:56:00.464Z"
+  },
+  {
+    "clipId": "example",
+    "url": "/media/example.mp4",
+    "duration": 10.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:56:31.046Z"
+  },
+  {
+    "clipId": "thanks",
+    "url": "/media/thanks.mp4",
+    "duration": 5.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:56:54.714Z"
+  },
+  {
+    "clipId": "goodbye",
+    "url": "/media/goodbye.mp4",
+    "duration": 5.066666666666666,
+    "status": "ready",
+    "source": "runninghub",
+    "generatedAt": "2026-09-22T15:57:26.135Z"
+  }
+]
