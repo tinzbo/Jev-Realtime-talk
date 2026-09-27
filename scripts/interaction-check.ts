@@ -41,7 +41,7 @@ for (const [index, entry] of cases.entries()) {
   if (!routed.ok) throw new Error(`选片接口异常：${routed.status}`);
   const decision = await routed.json() as Decision;
   const success = entry.expected.includes(decision.clipId || '') && Boolean(recognition.text);
-  const item = { id: entry.id, expectedText: entry.text, recognized: recognition.text, asrMs: recognition.latencyMs, routeMs: decision.latencyMs, totalMs: Math.round(performance.now() - start), clipId: decision.clipId, engine: decision.engine, success };
+  const item = { id: entry.id, expectedText: entry.text, recognized: recognition.text, asrMs: recognition.latencyMs, routeMs: decision.latencyMs, totalMs: Math.round(performance.now() - start), clipId: decision.clipId, engine: decision.engine, reason: decision.reason, confidence: decision.confidence, probability: decision.probability, success };
   results.push(item); console.log(JSON.stringify(item));
   history.push({ role: 'user', text: recognition.text });
   const clip = clips.find(clip => clip.id === decision.clipId);

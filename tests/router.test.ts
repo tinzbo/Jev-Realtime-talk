@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { TypeSafeClient } from '@typesafe-ai/sdk';
 import { makeQuestions, decide, demoDecision, isStop, route } from '../server/router';
 import { clips } from '../src/catalog';
 import type { RouteInput } from '../src/types';
@@ -27,6 +28,30 @@ test('no available clip produces a null video, never a broken media URL', () => 
 test('demo mode is explicitly labelled and does not invent model confidence', () => {
   const result = demoDecision({ ...input, text: '多少钱' }, clips);
   assert.equal(result.clipId, 'pricing'); assert.equal(result.engine, 'demo'); assert.equal(result.confidence, null);
+});
+test('choosing local preview never sends a request to Jev even when a key is configured', async t => {
+  const previousKey = process.env.TYPESAFE_API_KEY;
+  process.env.TYPESAFE_API_KEY = 'test-key-never-sent';
+  const provider = t.mock.method(TypeSafeClient.prototype, 'systemOne', async () => answer('mechanism'));
+  try {
+    const result = await route({ ...input, text: '多少钱', mode: 'preview' }, clips, new AbortController().signal);
+    assert.equal(provider.mock.callCount(), 0);
+    assert.equal(result.engine, 'demo'); assert.equal(result.clipId, 'pricing');
+    assert.equal(result.confidence, null); assert.equal(result.latencyMs, 0);
+  } finally {
+    if (previousKey === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = previousKey;
+  }
+});
+test('live mode still uses the configured Jev provider', async t => {
+  const previousKey = process.env.TYPESAFE_API_KEY;
+  process.env.TYPESAFE_API_KEY = 'test-key-never-sent';
+  const provider = t.mock.method(TypeSafeClient.prototype, 'systemOne', async () => answer('mechanism'));
+  try {
+    const result = await route({ ...input, mode: 'live' }, clips, new AbortController().signal);
+    assert.equal(provider.mock.callCount(), 1); assert.equal(result.engine, 'jev'); assert.equal(result.clipId, 'mechanism');
+  } finally {
+    if (previousKey === undefined) delete process.env.TYPESAFE_API_KEY; else process.env.TYPESAFE_API_KEY = previousKey;
+  }
 });
 test('an explicit stop is immediate and does not wait for a provider', () => {
   assert.equal(demoDecision({ ...input, text: '停一下' }, clips).interrupt, true);

@@ -40,8 +40,8 @@ export function demoDecision(input: RouteInput, clips: Clip[]): Decision {
 }
 export async function route(input: RouteInput, clips: Clip[], signal: AbortSignal): Promise<Decision> {
   if (isStop(input.text)) return { ...demoDecision(input, clips), engine: 'fallback', reason: '用户明确要求停止，立即打断' };
+  if (input.mode === 'preview') return demoDecision(input, clips);
   if (!process.env.TYPESAFE_API_KEY) {
-    if (input.mode === 'preview') return demoDecision(input, clips);
     return { ...demoDecision(input, []), engine: 'fallback', reason: '尚未配置 Jev，正式播放不可用' };
   }
   const started = performance.now();
