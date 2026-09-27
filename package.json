@@ -1,6 +1,6 @@
 {
   "name": "xtasy-interactive-avatar",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22.15.0" },
@@ -9,6 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "start": "tsx --env-file-if-exists=.env server/index.ts --production",
     "test": "tsx --test tests/*.test.ts",
+    "voice:setup": "tsx --env-file-if-exists=.env scripts/setup-voice.ts",
+    "check:interaction": "tsx scripts/interaction-check.ts",
     "check:media": "tsx scripts/check-media.ts",
     "production:plan": "tsx --env-file-if-exists=.env scripts/produce.ts plan",
     "production:sample": "tsx --env-file-if-exists=.env scripts/produce.ts sample",

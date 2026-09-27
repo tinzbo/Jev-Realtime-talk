@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeQuestions, decide, demoDecision } from '../server/router';
+import { makeQuestions, decide, demoDecision, isStop, route } from '../server/router';
 import { clips } from '../src/catalog';
 import type { RouteInput } from '../src/types';
 const input: RouteInput = { requestId: 1, text: '请讲讲原理', history: [], recentlyPlayed: [], mode: 'preview' };
@@ -30,6 +30,13 @@ test('demo mode is explicitly labelled and does not invent model confidence', ()
 });
 test('an explicit stop is immediate and does not wait for a provider', () => {
   assert.equal(demoDecision({ ...input, text: '停一下' }, clips).interrupt, true);
+});
+test('speech recognition punctuation cannot delay a stop or turn a discussion into a stop', async () => {
+  for (const text of ['停一下，', '请暂停。', '等一下…', 'stop.']) {
+    const result = await route({ ...input, text, mode: 'live' }, clips, new AbortController().signal);
+    assert.equal(result.engine, 'fallback'); assert.equal(result.latencyMs, 0); assert.equal(result.interrupt, true);
+  }
+  for (const text of ['停一下是什么意思？', '为什么会暂停', '请介绍打断一下这个功能']) assert.equal(isStop(text), false);
 });
 test('uncovered demo query uses no-match instead of a random relevant answer', () => {
   assert.equal(demoDecision({ ...input, text: '明天上海的天气' }, clips).clipId, 'out-of-scope');

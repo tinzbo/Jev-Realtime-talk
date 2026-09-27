@@ -1,95 +1,77 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { VoiceSession, type Recognition, type RecognitionResultEvent, type VoiceState } from '../src/voice';
-
-class FakeRecognition implements Recognition {
-  lang = ''; continuous = false; interimResults = false;
-  onstart: (() => void) | null = null;
-  onresult: ((event: RecognitionResultEvent) => void) | null = null;
-  onerror: ((event: { error: string }) => void) | null = null;
-  onend: (() => void) | null = null;
-  aborts = 0;
-  start() { this.onstart?.(); }
-  abort() { this.aborts++; }
-  result(text: string, isFinal = true) {
-    this.onresult?.({ results: [{ isFinal, 0: { transcript: text } }], resultIndex: 0 });
-  }
-}
-function fixture(silentStart = false) {
-  const recognizers: FakeRecognition[] = [];
+import { VoiceSession, type VoiceState, type Transcription } from '../src/voice';
+import type { Capture } from '../src/capture';
+const result = (text: string): Transcription => ({ text, latencyMs: 100, duration: 2, engine: 'test' });
+const settle = () => new Promise(resolve => setImmediate(resolve));
+function fixture() {
   const heard: string[] = [], errors: string[] = [], states: VoiceState[] = [];
+  let frame: (samples: Float32Array) => void = () => {}, lost = () => {}, closed = false, enabled = true;
+  const pending: { signal: AbortSignal; resolve: (result: Transcription) => void; reject: (error: Error) => void }[] = [];
   const timers = new Set<() => void>();
   const voice = new VoiceSession({
-    createRecognition: () => { const r = new FakeRecognition(); if (silentStart) r.start = () => {}; recognizers.push(r); return r; },
-    onUtterance: text => heard.push(text), onTranscript: () => {},
-    onState: state => states.push(state), onError: message => errors.push(message),
+    capture: async (_signal, callback, onLost) => { frame = callback; lost = onLost; return { sampleRate: 16000, close: () => { closed = true; }, setEnabled: value => { enabled = value; } }; },
+    transcribe: (_audio, signal) => new Promise((resolve, reject) => pending.push({ signal, resolve, reject })),
+    onUtterance: text => heard.push(text), onState: state => states.push(state), onError: message => errors.push(message),
     schedule: task => { timers.add(task); return () => { timers.delete(task); }; },
   });
-  const flush = () => { for (const task of [...timers]) { timers.delete(task); task(); } };
-  return { voice, recognizers, heard, errors, states, timers, flush };
+  const speak = () => { for (let i = 0; i < 25; i++) frame(new Float32Array(512).fill(.08)); for (let i = 0; i < 30; i++) frame(new Float32Array(512)); };
+  return { voice, pending, heard, errors, states, timers, speak, lost: () => lost(), isClosed: () => closed, isEnabled: () => enabled,
+    silence: () => { for (let i = 0; i < 1900; i++) frame(new Float32Array(512)); },
+    flush: () => { for (const task of [...timers]) { timers.delete(task); task(); } } };
 }
-
-test('silence keeps the voice session alive without submitting a reply or an error', () => {
-  const f = fixture(); f.voice.start();
-  f.recognizers[0].onerror?.({ error: 'no-speech' }); f.flush();
-  assert.equal(f.recognizers.length, 2);
-  assert.equal(f.states.at(-1), 'listening');
-  assert.deepEqual(f.heard, []); assert.deepEqual(f.errors, []);
-  f.voice.dispose();
+test('silence keeps the same live session without ASR traffic', async () => {
+  const f = fixture(); await f.voice.start(); f.silence();
+  assert.equal(f.pending.length, 0); assert.equal(f.states.at(-1), 'listening'); f.voice.dispose();
 });
-test('an empty service disconnect automatically reconnects the same conversation', () => {
-  const f = fixture(); f.voice.start(); f.recognizers[0].onend?.(); f.flush();
-  assert.equal(f.recognizers.length, 2); assert.equal(f.states.at(-1), 'listening');
-  f.voice.dispose();
+test('completed speech is recognized once, holds microphone, and resumes after the reply', async () => {
+  const f = fixture(); await f.voice.start(); f.speak(); f.speak();
+  assert.equal(f.pending.length, 1); assert.equal(f.isEnabled(), false);
+  f.pending[0].resolve(result('怎样制作数字人')); await settle();
+  assert.deepEqual(f.heard, ['怎样制作数字人']); assert.equal(f.states.at(-1), 'responding');
+  f.voice.resume(); f.flush(); assert.equal(f.isEnabled(), true); assert.equal(f.states.at(-1), 'listening');
+  f.speak(); assert.equal(f.pending.length, 2); f.voice.dispose();
 });
-test('one final utterance submits once and stops listening to the avatar speaker', () => {
-  const f = fixture(); f.voice.start();
-  const staleResult = f.recognizers[0].onresult, staleEnd = f.recognizers[0].onend;
-  f.recognizers[0].result('怎样批量制作？');
-  staleResult?.({ results: [{ isFinal: true, 0: { transcript: '重复回调' } }], resultIndex: 0 });
-  staleEnd?.(); f.flush();
-  assert.deepEqual(f.heard, ['怎样批量制作？']);
-  assert.equal(f.states.at(-1), 'responding'); assert.equal(f.recognizers.length, 1);
-  assert.equal(f.recognizers[0].aborts, 1); f.voice.dispose();
+test('interrupt aborts recognition and rejects late results before a new utterance', async () => {
+  const f = fixture(); await f.voice.start(); f.speak(); f.voice.interrupt();
+  assert.equal(f.pending[0].signal.aborted, true); f.pending[0].resolve(result('旧结果')); await settle();
+  assert.deepEqual(f.heard, []); f.speak(); f.pending[1].resolve(result('新问题')); await settle();
+  assert.deepEqual(f.heard, ['新问题']); f.voice.dispose();
 });
-test('a completed avatar reply automatically opens the next voice turn', () => {
-  const f = fixture(); f.voice.start(); f.recognizers[0].result('你好');
-  f.voice.resume(); f.flush(); f.recognizers[1].result('你会做什么');
-  assert.deepEqual(f.heard, ['你好', '你会做什么']); f.voice.dispose();
+test('explicit end closes capture, cancels recognition and cannot auto restart', async () => {
+  const f = fixture(); await f.voice.start(); f.speak(); f.voice.stop(); f.voice.resume(); f.flush();
+  f.pending[0].resolve(result('迟到')); await settle();
+  assert.equal(f.isClosed(), true); assert.equal(f.pending[0].signal.aborted, true); assert.equal(f.states.at(-1), 'off'); assert.deepEqual(f.heard, []);
 });
-test('explicit stop cancels reconnect and rejects late recognition callbacks', () => {
-  const f = fixture(); f.voice.start(); const stale = f.recognizers[0].onresult;
-  f.recognizers[0].onend?.(); f.voice.stop(); f.flush();
-  stale?.({ results: [{ isFinal: true, 0: { transcript: '不应提交' } }], resultIndex: 0 });
-  f.voice.resume(); f.flush();
-  assert.deepEqual(f.heard, []); assert.equal(f.recognizers.length, 1);
-  assert.equal(f.states.at(-1), 'off'); assert.equal(f.timers.size, 0);
+test('an empty recognition reopens listening without emitting a turn', async () => {
+  const f = fixture(); await f.voice.start(); f.speak(); f.pending[0].resolve(result('')); await settle();
+  assert.equal(f.states.at(-1), 'listening'); assert.equal(f.isEnabled(), true); assert.deepEqual(f.heard, []); f.voice.dispose();
 });
-test('interim speech never submits after cancellation or a service disconnect', () => {
-  const f = fixture(); f.voice.start(); f.recognizers[0].result('还没说完', false);
-  f.recognizers[0].onend?.(); f.flush();
-  assert.deepEqual(f.heard, []); f.voice.stop();
+test('typed questions pause capture and suppress the preceding speech result', async () => {
+  const f = fixture(); await f.voice.start(); f.speak(); f.voice.hold();
+  f.pending[0].resolve(result('不再需要')); await settle(); assert.deepEqual(f.heard, []);
+  assert.equal(f.isEnabled(), false); f.voice.resume(); f.voice.stop(); f.flush(); assert.equal(f.states.at(-1), 'off');
 });
-test('permission errors end the session with actionable guidance and no retry loop', () => {
-  const f = fixture(); f.voice.start(); f.recognizers[0].onerror?.({ error: 'not-allowed' });
-  f.flush(); f.voice.resume(); f.flush();
-  assert.equal(f.states.at(-1), 'off'); assert.match(f.errors[0], /麦克风权限/);
-  assert.equal(f.recognizers.length, 1); assert.equal(f.timers.size, 0);
+test('a disconnected microphone exits cleanly with specific guidance', async () => {
+  const f = fixture(); await f.voice.start(); f.lost();
+  assert.equal(f.states.at(-1), 'off'); assert.equal(f.isClosed(), true); assert.match(f.errors[0], /麦克风已断开/);
 });
-test('typed input holds recognition, and an explicit interruption reopens it', () => {
-  const f = fixture(); f.voice.start(); f.voice.hold();
-  assert.equal(f.states.at(-1), 'responding');
-  f.voice.interrupt(); assert.equal(f.recognizers.length, 2);
-  assert.equal(f.states.at(-1), 'listening'); f.voice.dispose();
+test('ASR failures leave text input usable and release the microphone', async () => {
+  const f = fixture(); await f.voice.start(); f.speak(); f.pending[0].reject(new Error('本地模型不可用')); await settle();
+  assert.equal(f.states.at(-1), 'off'); assert.equal(f.isClosed(), true); assert.equal(f.errors[0], '本地模型不可用');
 });
-test('dispose releases the microphone and prevents scheduled restart', () => {
-  const f = fixture(); f.voice.start(); f.recognizers[0].onend?.();
-  f.voice.dispose(); f.flush();
-  assert.equal(f.recognizers.length, 1); assert.equal(f.timers.size, 0);
+test('late permission approval after stop immediately closes the new stream', async () => {
+  let grant!: (capture: Capture) => void, closed = false;
+  const voice = new VoiceSession({ capture: () => new Promise(resolve => { grant = resolve; }), transcribe: async () => result(''), onUtterance: () => {}, onState: () => {}, onError: () => {} });
+  const start = voice.start(); voice.stop(); grant({ sampleRate: 16000, setEnabled: () => {}, close: () => { closed = true; } }); await start;
+  assert.equal(closed, true);
 });
-test('a browser exposing the API but never starting cannot leave the microphone UI stuck', () => {
-  const f = fixture(true); f.voice.start(); f.flush();
-  assert.equal(f.states.at(-1), 'off');
-  assert.match(f.errors[0], /未能启动语音服务/);
-  assert.equal(f.timers.size, 0); assert.equal(f.recognizers[0].aborts, 1);
+test('a disconnected old capture cannot stop a newly started session', async () => {
+  const callbacks: (() => void)[] = [], states: VoiceState[] = [], errors: string[] = [];
+  const voice = new VoiceSession({
+    capture: async (_signal, _frame, lost) => { callbacks.push(lost); return { sampleRate: 16000, setEnabled: () => {}, close: () => {} }; },
+    transcribe: async () => result(''), onUtterance: () => {}, onState: state => states.push(state), onError: message => errors.push(message),
+  });
+  await voice.start(); voice.stop(); await voice.start(); callbacks[0]();
+  assert.equal(states.at(-1), 'listening'); assert.equal(errors.length, 0); voice.dispose();
 });

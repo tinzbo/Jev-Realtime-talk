@@ -2,14 +2,14 @@
 
 语音优先的交互数字人，使用 **RunningHub 生成视频、Hypit 编排导出、Jev 选择回应**。用户说完一句，系统从预先准备的内容中选择一段播放，形成伪实时对话。
 
-当前版本 **v0.2.0**，仓库直接包含 **24 条完整 MP4**：22 条中文口播、2 条静音过渡，共 197.6 秒，720×1280、30fps、H.264 / AAC。克隆后即可播放，不需要重新生成视频或下载 Git LFS 对象。
+当前版本 **v0.3.0**，已接入本地 Whisper 语音识别，浏览器只负责采集声音。仓库直接包含 **24 条完整 MP4**：22 条中文口播、2 条静音过渡，共 197.6 秒，720×1280、30fps、H.264 / AAC。克隆后即可播放，不需要重新生成视频或下载 Git LFS 对象。
 
 ## 本地启动
 
 推荐 Node.js 24（最低 22.15）。播放现有视频不需要 ffmpeg。
 
 ```sh
-git clone https://github.com/tinzbo/xtasy.git
+git clone https://github.com/tinzbo/Jev-Realtime-talk.git xtasy
 cd xtasy
 npm ci
 npm run dev
@@ -25,6 +25,14 @@ cp .env.example .env
 
 在 `.env` 填入 `TYPESAFE_API_KEY` 后重启服务。`RUNNINGHUB_API_KEY` 仅用于重新制作视频，现有 24 条视频无需生成账户。凭证只由服务端读取，`.env`、云端任务记录和临时产物不入库。
 
+启用语音需要本机 Python 3 和 [Whisper](https://github.com/openai/whisper)。先运行一次：
+
+```sh
+npm run voice:setup
+```
+
+该命令优先复用现有 Whisper 环境，否则在项目的 `.asr-venv` 安装；下载默认 `base` 模型约 139 MiB，不调用付费转写接口。重启工作室后在「设置」查看 Whisper 状态。可在 `.env` 指定 `ASR_PYTHON`、`ASR_MODEL_DIR`、`ASR_MODEL` 和 `ASR_THREADS`；服务运行时只加载已安装模型，不自动下载。没有模型时，文字和视频仍可使用。
+
 生产构建也在本机运行：
 
 ```sh
@@ -35,7 +43,7 @@ npm start
 ## 怎么交互
 
 - 点击 **开始语音聊天**，允许浏览器使用麦克风，然后直接提问。识别到完整话语才提交。
-- 回应播放完会自动继续倾听；短暂停顿或浏览器的无话超时不会结束会话，也不会发送空问题。
+- 回应播放完会自动继续倾听；短暂停顿或长时间不说话不会结束会话，也不会发送空问题。
 - 小岚回应时暂停识别，避免扬声器声音被当成用户输入。想接话时点击 **打断并说话**。这是一种半双工会话，不是免点击的全双工语音打断。
 - 点击 **也可以打字** 展开输入框。支持中文输入法，Enter 发送、Shift + Enter 换行。
 - 点击 **结束语音**、打开工作室或将页面切到后台会关闭麦克风。
@@ -44,14 +52,18 @@ npm start
 
 建议从「你能做什么」「怎么批量制作数字人视频」「怎么接入我的网站」开始。当前内容库用于 AI 产品讲解与数字人制作示例，未覆盖的问题会说明范围。
 
-语音使用浏览器的 SpeechRecognition，兼容性和识别服务网络可用性取决于浏览器。建议支持该能力的 Chrome，并在 localhost 或 HTTPS 使用。识别可能由浏览器厂商的在线服务处理；服务无响应时，10 秒后给出提示与文字备用入口。**当前验收环境未完成真实麦克风识别，不能把自动化生命周期测试等同于真实 ASR 验收。** [浏览器语音 API](https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition)、[识别服务断开事件](https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition/end_event)。
+语音路径为 `麦克风 → AudioWorklet → 自动分句 → 本机 Whisper → Jev → 回应视频`，不再依赖浏览器厂商的 SpeechRecognition 服务。需要支持 `getUserMedia` / `AudioWorklet` 的浏览器，推荐桌面 Chrome；当前服务器仅允许本机访问。停顿约 0.9 秒提交一轮，单轮最长约 18 秒。录音只在内存中处理，不保存到磁盘；转写后的文字及最近对话仍会发送给 Jev。
+
+**已验证合成中文音频经过真实采集处理、Whisper、Jev 和浏览器视频播放；真实麦克风、现场噪声及扬声器回声仍需在目标设备验收。** 6 条固定语音样例全部选中预期视频，不代表开放场景的准确率。详见 [v0.3.0 语音验收](docs/voice-acceptance-2026-09-27.md)。
 
 ## 项目结构
 
 | 路径 | 用途 |
 | --- | --- |
 | `src/App.tsx` | 简化界面、持续倾听画面、回应播放与打断 |
-| `src/voice.ts` | 连续语音会话、静默重连、回应期间暂停、权限和连接异常处理 |
+| `src/voice.ts` | 连续语音会话、识别请求取消、回应期间暂停及恢复 |
+| `src/capture.ts` / `src/audio.ts` | 浏览器采集、自动分句、WAV 编码与开发用合成语音输入 |
+| `server/asr.ts` / `server/voice-api.ts` | 常驻 Whisper、同源语音接口、限流、超时与清理 |
 | `src/catalog.ts` | 24 条台词、用途、时长和选片线索 |
 | `server/router.ts` | Jev 类型化判断、候选范围与置信度校验 |
 | `public/media/` | 24 条可直接播放的最终视频 |
@@ -101,6 +113,16 @@ npm run build
 ```
 
 GitHub Actions 不使用生产凭证，检查类型、行为测试、24 条媒体完整性和生产构建。
+
+本机交互回归需先启动工作室，且安装 ffmpeg；macOS 自动使用系统合成声音创建 6 条测试输入。其他系统可先在 `artifacts/interaction/` 准备相同名称和台词的 WAV。该命令会使用已配置的 Jev 进行最多 6 次选片判断，不生成新视频。
+
+```sh
+npm run check:interaction
+# 只准备样例，不调用 Jev：
+npm run check:interaction -- --fixtures-only
+```
+
+结果写入 `artifacts/interaction/latest.json`。开发服务器的 `http://127.0.0.1:4173/?voice-test=1` 提供合成样例选择和运行按钮，通过实际 AudioWorklet / 自动分句链路，不启用麦克风。该面板和样例接口不会出现在生产构建中。
 
 ## 上游项目
 

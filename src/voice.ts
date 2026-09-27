@@ -1,157 +1,131 @@
-export type VoiceState = 'off' | 'starting' | 'listening' | 'responding';
-export interface RecognitionResultEvent {
-  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
-  resultIndex: number;
-}
-export interface Recognition {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onstart: (() => void) | null;
-  onresult: ((event: RecognitionResultEvent) => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onend: (() => void) | null;
-  start(): void;
-  abort(): void;
-}
+import { SpeechSegmenter, encodeWav } from './audio';
+import type { Capture, CaptureFactory } from './capture';
+export type VoiceState = 'off' | 'starting' | 'listening' | 'transcribing' | 'responding';
+export type Transcription = { text: string; latencyMs: number; duration: number; engine: string };
+export type Transcribe = (audio: ArrayBuffer, signal: AbortSignal) => Promise<Transcription>;
 type Options = {
-  createRecognition: () => Recognition;
+  capture: CaptureFactory;
+  transcribe: Transcribe;
   onUtterance: (text: string) => void;
-  onTranscript: (text: string) => void;
   onState: (state: VoiceState) => void;
   onError: (message: string) => void;
+  onRecognized?: (result: Transcription) => void;
   schedule?: (task: () => void, delay: number) => () => void;
 };
 
-/** A session spans many browser recognition connections and avatar replies. */
 export class VoiceSession {
   private enabled = false;
   private held = false;
-  private recognition: Recognition | null = null;
-  private cancelRestart: (() => void) | null = null;
-  private cancelStartTimeout: (() => void) | null = null;
+  private generation = 0;
+  private input: Capture | null = null;
+  private detector: SpeechSegmenter | null = null;
+  private captureRequest: AbortController | null = null;
+  private request: AbortController | null = null;
+  private cancelTimer: (() => void) | null = null;
   private readonly schedule: NonNullable<Options['schedule']>;
-
   constructor(private readonly options: Options) {
-    this.schedule = options.schedule ?? ((task, delay) => {
-      const timer = setTimeout(task, delay);
-      return () => clearTimeout(timer);
-    });
+    this.schedule = options.schedule ?? ((task, delay) => { const timer = setTimeout(task, delay); return () => clearTimeout(timer); });
   }
-  start(): void {
+  async start(): Promise<void> {
     if (this.enabled) return;
-    this.enabled = true;
-    this.held = false;
-    this.connect(true);
+    this.enabled = true; this.held = false;
+    const generation = ++this.generation, controller = new AbortController(); this.captureRequest = controller;
+    this.options.onState('starting');
+    this.cancelTimer = this.schedule(() => {
+      if (this.generation !== generation) return;
+      this.stop(); this.options.onError('还没有获得麦克风权限。请允许当前页面使用麦克风，然后重试。');
+    }, 30000);
+    try {
+      const input = await this.options.capture(controller.signal, frame => this.consume(frame), () => {
+        if (!this.enabled || controller.signal.aborted) return;
+        this.stop(); this.options.onError('麦克风已断开，请检查输入设备后重新开始。');
+      });
+      if (!this.enabled || generation !== this.generation) { input.close(); return; }
+      this.cancelTimer?.(); this.cancelTimer = null;
+      this.input = input; this.detector = new SpeechSegmenter(input.sampleRate);
+      input.setEnabled(!this.held); this.options.onState(this.held ? 'responding' : 'listening');
+    } catch (error) {
+      if (generation !== this.generation) return;
+      this.stop();
+      const name = error instanceof Error ? error.name : '';
+      this.options.onError(name === 'NotAllowedError' ? '麦克风权限未开启，请在地址栏允许当前页面使用麦克风。'
+        : name === 'NotFoundError' ? '没有找到麦克风，请连接输入设备后重试。' : '无法采集麦克风声音，请检查设备和浏览器权限。');
+    }
   }
   stop(): void {
-    this.enabled = false;
-    this.held = false;
-    this.release();
-    this.options.onTranscript('');
+    this.enabled = false; this.held = false; ++this.generation;
+    this.cancelTimer?.(); this.cancelTimer = null;
+    this.captureRequest?.abort(); this.captureRequest = null;
+    this.request?.abort(); this.request = null;
+    this.input?.close(); this.input = null; this.detector = null;
     this.options.onState('off');
   }
   dispose(): void { this.stop(); }
   hold(): void {
     if (!this.enabled) return;
-    this.held = true;
-    this.release();
-    this.options.onTranscript('');
-    this.options.onState('responding');
+    if (!this.input) { this.stop(); return; }
+    this.held = true; ++this.generation; this.request?.abort(); this.request = null;
+    this.cancelTimer?.(); this.cancelTimer = null;
+    this.detector?.reset(); this.input?.setEnabled(false); this.options.onState('responding');
   }
   resume(): void {
     if (!this.enabled || !this.held) return;
-    this.held = false;
-    // Let the last syllable leave the speakers before opening the microphone.
-    this.restart(350);
+    this.cancelTimer?.();
+    this.cancelTimer = this.schedule(() => {
+      this.cancelTimer = null;
+      if (!this.enabled) return;
+      this.held = false; this.detector?.reset(); this.input?.setEnabled(true); this.options.onState('listening');
+    }, 350);
   }
   interrupt(): void {
     if (!this.enabled) return;
-    this.held = false;
-    this.release();
-    this.options.onTranscript('');
-    this.connect(true);
+    if (!this.input) { this.stop(); return; }
+    ++this.generation; this.request?.abort(); this.request = null;
+    this.cancelTimer?.(); this.cancelTimer = null;
+    this.held = false; this.detector?.reset(); this.input?.setEnabled(true); this.options.onState('listening');
   }
-  private release(): void {
-    this.cancelRestart?.();
-    this.cancelRestart = null;
-    this.cancelStartTimeout?.();
-    this.cancelStartTimeout = null;
-    const recognition = this.recognition;
-    this.recognition = null;
-    if (!recognition) return;
-    recognition.onstart = recognition.onresult = recognition.onerror = recognition.onend = null;
-    recognition.abort();
-  }
-  private restart(delay = 500): void {
-    this.release();
-    if (!this.enabled || this.held) return;
-    // Silent disconnects stay visually in the same listening state.
-    this.cancelRestart = this.schedule(() => {
-      this.cancelRestart = null;
-      if (this.enabled && !this.held) this.connect();
-    }, delay);
-  }
-  private connect(announce = false): void {
-    if (!this.enabled || this.held || this.recognition) return;
-    const recognition = this.options.createRecognition();
-    this.recognition = recognition;
-    const live = () => this.enabled && !this.held && this.recognition === recognition;
-    recognition.lang = 'zh-CN';
-    // Native end-of-utterance detection, with a persistent session around it.
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.onstart = () => {
-      if (!live()) return;
-      this.cancelStartTimeout?.(); this.cancelStartTimeout = null;
-      this.options.onState('listening');
-    };
-    recognition.onresult = event => {
-      if (!live()) return;
-      let transcript = '', final = '';
-      for (let i = 0; i < event.results.length; i++) {
-        const result = event.results[i];
-        transcript += result[0].transcript;
-        if (result.isFinal) final += result[0].transcript;
-      }
-      this.options.onTranscript(transcript);
-      if (!final.trim()) return;
-      // Fence duplicate/late callbacks before invoking application code.
-      this.hold();
-      this.options.onUtterance(final.trim().slice(0, 1500));
-    };
-    recognition.onend = () => { if (live()) { this.options.onTranscript(''); this.restart(); } };
-    recognition.onerror = event => {
-      if (!live()) return;
-      if (event.error === 'no-speech' || event.error === 'aborted') {
-        this.options.onTranscript('');
-        this.restart();
-        return;
-      }
-      this.stop();
-      const messages: Record<string, string> = {
-        'not-allowed': '麦克风权限未开启。请在浏览器地址栏允许麦克风后重试，也可以先用文字聊。',
-        'service-not-allowed': '浏览器暂不能使用语音服务。请使用支持语音识别的 Chrome，或先用文字聊。',
-        'audio-capture': '没有找到可用的麦克风。请检查系统输入设备后重试。',
-        network: '语音服务暂时连接不上。请检查网络后重试，或先用文字聊。',
-      };
-      this.options.onError(messages[event.error] ?? '语音识别暂时不可用，请重试或使用文字输入。');
-    };
-    if (announce) this.options.onState('starting');
-    this.cancelStartTimeout = this.schedule(() => {
-      if (!live()) return;
-      this.stop();
-      this.options.onError('当前浏览器未能启动语音服务。请用支持语音识别的 Chrome 打开此页面，或先用文字聊。');
-    }, 10000);
-    try { recognition.start(); }
-    catch { this.stop(); this.options.onError('麦克风启动失败，请重新点击语音按钮。'); }
+  private consume(frame: Float32Array): void {
+    if (!this.enabled || this.held || this.request || !this.input) return;
+    const segment = this.detector?.push(frame);
+    if (!segment) return;
+    const generation = ++this.generation, controller = new AbortController(); this.request = controller;
+    this.input.setEnabled(false); this.options.onState('transcribing');
+    void this.options.transcribe(encodeWav(segment, this.input.sampleRate), controller.signal).then(result => {
+      if (!this.enabled || generation !== this.generation || controller.signal.aborted) return;
+      this.request = null;
+      if (!result.text.trim()) { this.detector?.reset(); this.input?.setEnabled(true); this.options.onState('listening'); return; }
+      this.hold(); this.options.onRecognized?.(result); this.options.onUtterance(result.text.trim().slice(0, 1500));
+    }).catch(error => {
+      if (!this.enabled || generation !== this.generation || controller.signal.aborted) return;
+      this.request = null; this.stop();
+      this.options.onError(error instanceof Error ? error.message : '语音识别未能完成，请再试一次。');
+    });
   }
 }
 
-export function browserRecognition(): (new () => Recognition) | undefined {
-  const browser = window as unknown as {
-    SpeechRecognition?: new () => Recognition;
-    webkitSpeechRecognition?: new () => Recognition;
+export function serverTranscriber(request: typeof fetch = fetch): Transcribe {
+  let token = '', issuedAt = 0;
+  return async (audio, signal) => {
+    const combined = AbortSignal.any([signal, AbortSignal.timeout(65000)]);
+    try {
+      if (!token || Date.now() - issuedAt > 25 * 60 * 1000) {
+        const session = await request('/api/voice/session', { signal: combined });
+        if (!session.ok) throw new Error('无法连接本地语音服务，请确认工作室仍在运行。');
+        const data = await session.json(); token = data.token; issuedAt = Date.now();
+      }
+      const response = await request('/api/voice/transcribe', {
+        method: 'POST', headers: { 'Content-Type': 'audio/wav', 'X-Voice-Token': token }, body: audio,
+        signal: combined,
+      });
+      const result = await response.json();
+      if (response.status === 403) token = '';
+      if (!response.ok) throw new Error(result.error || '本地识别暂不可用，请重试。');
+      return result as Transcription;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      if (combined.aborted) throw new Error('语音识别超时，请分成短句重试。');
+      if (error instanceof TypeError || error instanceof SyntaxError) throw new Error('无法连接本地语音服务，请确认工作室仍在运行。');
+      throw error;
+    }
   };
-  return browser.SpeechRecognition ?? browser.webkitSpeechRecognition;
 }

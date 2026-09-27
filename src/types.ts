@@ -20,4 +20,4 @@ export interface Decision {
   latencyMs: number; reason: string; candidates: { id: string; probability: number }[];
   model?: string; usage?: { input_tokens: number; output_tokens: number };
 }
-export interface ServiceStatus { jev: boolean; jevVerified: boolean; jevModel?: string; runninghub: boolean; portrait: boolean; readyClips: number; reviewClips: number; totalClips: number; production: { submitted: number; pending: number; complete: number; needsAttention: number }; }
+export interface ServiceStatus { asr?: { state: 'starting' | 'ready' | 'unavailable'; engine: string; model: string; message?: string }; jev: boolean; jevVerified: boolean; jevModel?: string; runninghub: boolean; portrait: boolean; readyClips: number; reviewClips: number; totalClips: number; production: { submitted: number; pending: number; complete: number; needsAttention: number }; }

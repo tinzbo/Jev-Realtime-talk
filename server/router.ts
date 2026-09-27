@@ -18,7 +18,7 @@ export function makeQuestions(clips: Clip[]) {
   };
 }
 function fallbackId(clips: Clip[], id: string): string | null { return clips.some(c => c.id === id) ? id : null; }
-export const isStop = (text: string) => /^(请)?(停一下|暂停|停止|别说了?|等一下|打断一下|stop)[。！!\s]*$/i.test(text.trim());
+export const isStop = (text: string) => /^(请)?(停一下|暂停|停止|别说了?|等一下|打断一下|stop)[。！!，,、；;：:.…\s]*$/i.test(text.trim());
 export function decide(input: RouteInput, raw: unknown, clips: Clip[], latencyMs: number): Decision {
   const data = resultSchema.parse(raw);
   const route = data.answers.route;

@@ -21,3 +21,4 @@ production/*.tmp
 notes.md
 task_plan.md
 data/reviews/
+.asr-venv/

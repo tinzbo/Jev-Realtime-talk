@@ -8,22 +8,34 @@ import { fileURLToPath } from 'node:url';
 import { clips } from '../src/catalog';
 import { readAssets } from './assets';
 import { route, jevHealth } from './router';
+import { LocalASR } from './asr';
+import { voiceRouter } from './voice-api';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const app = express();
+const asr = new LocalASR();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '24kb' }));
 app.use('/api', (req, res, next) => {
   res.setHeader('Cache-Control', 'no-store');
   const origin = req.headers.origin;
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(req.hostname) || req.get('Sec-Fetch-Site') === 'cross-site') { res.status(403).json({ error: '仅允许本机同源访问' }); return; }
   if (origin && origin !== `http://${req.headers.host}`) { res.status(403).json({ error: '不允许跨站请求' }); return; }
   next();
 });
 app.get('/api/catalog', async (_req,res) => res.json({ clips, assets: await readAssets() }));
+app.use('/api/voice', voiceRouter(asr));
+// Synthetic fixtures are exposed only by the development server, from a fixed allowlist.
+if (!process.argv.includes('--production')) app.get('/api/voice/fixture/:name', (req, res) => {
+  if (!['hello', 'batch', 'website', 'stop', 'weather', 'thanks'].includes(req.params.name)) { res.sendStatus(404); return; }
+  const file = path.join(root, 'artifacts/interaction', `${req.params.name}.wav`);
+  if (!existsSync(file)) { res.status(404).json({ error: '请先运行 npm run check:interaction -- --fixtures-only。' }); return; }
+  res.type('audio/wav').sendFile(file);
+});
 app.get('/api/status', async (_req,res) => {
   const assets = await readAssets();
   let jobs: { status: string; taskId?: string }[] = [];
   try { jobs = JSON.parse(await readFile(path.join(root,'production/jobs.json'),'utf8')); } catch(error) { if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error; }
-  res.json({ jev: Boolean(process.env.TYPESAFE_API_KEY), jevVerified: jevHealth.verified, jevModel: jevHealth.model, runninghub: Boolean(process.env.RUNNINGHUB_API_KEY), portrait: Boolean(process.env.AVATAR_IMAGE_URL) || existsSync(path.join(root,'public/avatar-reference.png')), readyClips: assets.filter(a=>a.status==='ready').length, reviewClips: assets.filter(a=>a.status==='review').length, totalClips: clips.length, production: { submitted: jobs.filter(j=>j.taskId).length, pending: jobs.filter(j=>['pending','generated','submitting'].includes(j.status)).length, complete: jobs.filter(j=>j.status==='complete').length, needsAttention: jobs.filter(j=>['failed','unknown'].includes(j.status)).length } });
+  res.json({ asr: asr.status, jev: Boolean(process.env.TYPESAFE_API_KEY), jevVerified: jevHealth.verified, jevModel: jevHealth.model, runninghub: Boolean(process.env.RUNNINGHUB_API_KEY), portrait: Boolean(process.env.AVATAR_IMAGE_URL) || existsSync(path.join(root,'public/avatar-reference.png')), readyClips: assets.filter(a=>a.status==='ready').length, reviewClips: assets.filter(a=>a.status==='review').length, totalClips: clips.length, production: { submitted: jobs.filter(j=>j.taskId).length, pending: jobs.filter(j=>['pending','generated','submitting'].includes(j.status)).length, complete: jobs.filter(j=>j.status==='complete').length, needsAttention: jobs.filter(j=>['failed','unknown'].includes(j.status)).length } });
 });
 const inputSchema = z.object({ requestId: z.number().int().min(1), text: z.string().trim().min(1).max(1500), history: z.array(z.object({ role: z.enum(['user','assistant']), text: z.string().max(1500), clipId: z.string().max(80).optional() })).max(10).default([]), currentClipId: z.string().max(80).optional(), recentlyPlayed: z.array(z.string().max(80)).max(10).default([]), mode: z.enum(['preview','live']).default('preview') });
 let requestWindow = Date.now(); let requests = 0;
@@ -53,7 +65,11 @@ if (process.argv.includes('--production')) {
 }
 app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   if (res.headersSent) return;
+  if ((error as { type?: string }).type === 'entity.too.large') { res.status(413).json({ error: _req.path.startsWith('/api/voice/') ? '录音过长，请分成短句。' : '请求内容过多，请缩短对话后重试。' }); return; }
   const badBody = error instanceof SyntaxError;
   res.status(badBody ? 400 : 500).json({error: badBody ? '请求不是有效 JSON' : '服务暂不可用，请检查本地配置'});
 });
 app.listen(Number(process.env.PORT || 4173), '127.0.0.1', ()=>console.log(`Xtasy: http://127.0.0.1:${process.env.PORT || 4173}`));
+void asr.start().catch(() => console.warn('本地语音尚未就绪；文字与视频仍可使用。请检查 /api/voice/session。'));
+for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => { asr.close(); process.exit(0); });
+process.once('exit', () => asr.close());
