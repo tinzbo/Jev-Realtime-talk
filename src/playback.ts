@@ -5,6 +5,28 @@ export class TurnGate {
   cancel(): void { ++this.current; }
   accept(id: number): boolean { return id === this.current; }
 }
+
+/** Some audio-output failures leave play() resolved but the media clock frozen. */
+export function watchPlayback(video: HTMLVideoElement, signal: AbortSignal, onFailure: () => void, now = () => performance.now()): () => void {
+  if (signal.aborted) return () => {};
+  let previousTime = video.currentTime, lastProgress = now(), watching = true;
+  const cleanup = () => {
+    watching = false; clearInterval(timer);
+    video.removeEventListener('ended', cleanup); video.removeEventListener('error', failed);
+    signal.removeEventListener('abort', cleanup);
+  };
+  const failed = () => { if (watching) { cleanup(); onFailure(); } };
+  const timer = setInterval(() => {
+    if (video.ended || signal.aborted) { cleanup(); return; }
+    if (video.currentTime !== previousTime) { previousTime = video.currentTime; lastProgress = now(); }
+    else if (now() - lastProgress >= 4000) failed();
+  }, 250);
+  video.addEventListener('ended', cleanup, { once: true });
+  video.addEventListener('error', failed, { once: true });
+  signal.addEventListener('abort', cleanup, { once: true });
+  return cleanup;
+}
+
 export function readyVideo(video: HTMLVideoElement, url: string, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const cleanup = () => { clearTimeout(timer); video.removeEventListener('canplay', ready); video.removeEventListener('error', failed); signal.removeEventListener('abort', aborted); };

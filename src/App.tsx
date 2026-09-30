@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowUp, AudioLines, Check, ChevronRight, Film, Keyboard, Mic, MicOff, Play, RotateCcw, Search, Settings2, Volume2, VolumeX, X } from 'lucide-react';
 import type { Catalog, Clip, Decision, ServiceStatus, Turn } from './types';
-import { TurnGate, readyVideo, decodedFrame } from './playback';
+import { TurnGate, readyVideo, decodedFrame, watchPlayback } from './playback';
 import { VoiceSession, serverTranscriber, type VoiceState, type Transcription } from './voice';
 import { captureMicrophone, captureFixture, canCaptureAudio, type CaptureFactory } from './capture';
 
@@ -122,6 +122,11 @@ export default function App() {
       if (!gate.current.accept(turn) || controller.signal.aborted) return false;
       (next === 0 ? video1.current : video0.current)?.pause();
       slotTurns.current[next] = turn; activeRef.current = next; setActive(next); setCurrent(clip);
+      watchPlayback(video, controller.signal, () => {
+        if (!gate.current.accept(turn) || controller.signal.aborted || activeRef.current !== next) return;
+        cancelTurn(); speech.current?.resume(); setTextOpen(true);
+        setError('视频播放停住了，请重试或检查浏览器的声音输出。也可以继续输入。');
+      });
       return true;
     } catch (cause) {
       if (!controller.signal.aborted && gate.current.accept(turn)) {
