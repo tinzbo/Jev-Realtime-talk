@@ -228,7 +228,7 @@ export default function App() {
         {!current && !busy && voiceState === 'off' && <div className="avatar-welcome"><span>很高兴见到你</span><p>有话想聊，<br />我就在这里。</p></div>}
       </section>
       <section className="conversation" aria-labelledby="conversation-title">
-        <div className="conversation-heading"><div><span className="eyebrow">LET’S TALK</span><h1 id="conversation-title">和小岚聊聊</h1></div><button className="icon-button reset-button" aria-label="清空对话" onClick={() => { interrupt(); historyRef.current = []; setHistory([]); played.current = []; }}><RotateCcw size={17} /></button></div>
+        <div className="conversation-heading"><div><span className="eyebrow">LET’S TALK</span><h1 id="conversation-title">和小岚聊聊</h1></div><button className="icon-button reset-button" aria-label="清空对话" onClick={() => { interrupt(); historyRef.current = []; setHistory([]); played.current = []; setCurrent(null); setDecision(null); }}><RotateCcw size={17} /></button></div>
         <div className="messages" ref={messages} role="log" aria-label="对话记录" aria-live="polite">
           {history.length === 0 ? <div className="conversation-empty"><h2>像聊天一样，<br />直接说出你的想法。</h2><p>想做什么样的数字人？需要多少段视频？<br className="desktop-break" />你可以从一个具体的问题开始。</p><div className="suggestions"><span>比如聊聊</span>{prompts.map(text => <button key={text} onClick={() => { void submit(text); }}>{text}<ChevronRight size={16} /></button>)}</div></div>
             : history.map((turn, index) => <div key={index} className={`message ${turn.role}`}><span className="message-name">{turn.role === 'user' ? '你' : '小岚'}</span><p>{turn.text}</p></div>)}
