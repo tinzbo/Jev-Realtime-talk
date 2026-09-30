@@ -41,3 +41,20 @@ test('malformed audio, disguised non-audio, bad sample rate and long uploads are
   assert.throws(() => validateAudio(invalid));
   assert.throws(() => validateAudio(Buffer.from(encodeWav(frame(.1, 21), 16000))));
 });
+
+test('speech onset requires continuous energy, so separated clicks cannot accumulate a false interruption', () => {
+  const vad = new SpeechSegmenter(16000);
+  for (let i = 0; i < 20; i++) { vad.push(frame(.2), .24); vad.push(frame(), .24); assert.equal(vad.speechStarted, false); }
+  for (let i = 0; i < 30; i++) assert.equal(vad.push(frame(), .24), null);
+  assert.equal(vad.hasPendingSpeech, false);
+});
+test('normal and reply onset thresholds preserve pre-roll without requiring a finished utterance', () => {
+  const vad = new SpeechSegmenter(16000);
+  for (let i = 0; i < 10; i++) vad.push(frame());
+  for (let i = 0; i < 3; i++) { vad.push(frame(.08)); assert.equal(vad.speechStarted, false); }
+  assert.equal(vad.hasPendingSpeech, true); vad.push(frame(.08)); assert.equal(vad.speechStarted, true);
+  assert.ok(vad.bufferedSamples >= 14 * 512); vad.reset();
+  for (let i = 0; i < 7; i++) { vad.push(frame(.08), .24); assert.equal(vad.speechStarted, false); }
+  vad.push(frame(.08), .24); assert.equal(vad.speechStarted, true);
+  vad.reset(); assert.equal(vad.speechStarted, false); assert.equal(vad.hasPendingSpeech, false);
+});

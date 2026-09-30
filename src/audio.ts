@@ -2,28 +2,39 @@
 export class SpeechSegmenter {
   private chunks: Float32Array[] = [];
   private samples = 0;
-  private speechSamples = 0;
   private quietSamples = 0;
   private speaking = false;
+  private onsetSamples = 0;
+  private confirmed = false;
   private noise = .002;
   constructor(private readonly sampleRate: number) {}
   get bufferedSamples(): number { return this.samples; }
-  reset(): void { this.chunks = []; this.samples = this.speechSamples = this.quietSamples = 0; this.speaking = false; }
-  push(frame: Float32Array): Float32Array | null {
+  get speechStarted(): boolean { return this.confirmed; }
+  // Brief candidates delay a racing ASR result without treating a click as a turn.
+  get hasPendingSpeech(): boolean { return this.speaking && !this.confirmed && this.quietSamples < this.sampleRate * .12; }
+  reset(): void {
+    this.chunks = []; this.samples = this.quietSamples = this.onsetSamples = 0;
+    this.speaking = this.confirmed = false;
+  }
+  push(frame: Float32Array, onsetSeconds = .12): Float32Array | null {
+    if (!frame.length) return null;
     let power = 0;
     for (const sample of frame) power += sample * sample;
     const rms = Math.sqrt(power / frame.length);
     const voiced = rms > Math.max(.012, this.noise * 3);
     if (!this.speaking && !voiced) this.noise = .97 * this.noise + .03 * rms;
     this.chunks.push(frame.slice()); this.samples += frame.length;
-    if (voiced) { this.speaking = true; this.speechSamples += frame.length; this.quietSamples = 0; }
-    else if (this.speaking) this.quietSamples += frame.length;
+    if (voiced) {
+      this.speaking = true; this.quietSamples = 0;
+      this.onsetSamples += frame.length;
+      if (this.onsetSamples >= this.sampleRate * onsetSeconds) this.confirmed = true;
+    } else if (this.speaking) { this.quietSamples += frame.length; this.onsetSamples = 0; }
     else {
       while (this.samples > this.sampleRate * .32 && this.chunks.length > 1) this.samples -= this.chunks.shift()!.length;
       return null;
     }
     if (this.quietSamples < this.sampleRate * .9 && this.samples < this.sampleRate * 18) return null;
-    if (this.speechSamples < this.sampleRate * .18) { this.reset(); return null; }
+    if (!this.confirmed) { this.reset(); return null; }
     const result = new Float32Array(this.samples); let offset = 0;
     for (const chunk of this.chunks) { result.set(chunk, offset); offset += chunk.length; }
     this.reset(); return result;

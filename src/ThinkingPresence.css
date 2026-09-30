@@ -1,0 +1,19 @@
+.thinking-video {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%;
+  opacity: 0;
+  transition: opacity 180ms ease;
+  pointer-events: none;
+}
+.thinking-video.is-visible { opacity: 1; }
+@media (max-width: 700px) {
+  .thinking-video { object-position: center 32%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thinking-video { transition: none; }
+}

@@ -4,6 +4,7 @@ import type { Catalog, Clip, Decision, ServiceStatus, Turn } from './types';
 import { TurnGate, readyVideo, decodedFrame, watchPlayback, startPlayback } from './playback';
 import { VoiceSession, serverTranscriber, type VoiceState, type Transcription } from './voice';
 import { captureMicrophone, captureFixture, canCaptureAudio, type CaptureFactory } from './capture';
+import ThinkingPresence from './ThinkingPresence';
 
 const prompts = ['你能做什么？', '怎么批量制作数字人视频？', '怎么接入我的网站？'];
 type InteractionNotice = { message: string; clip?: Clip };
@@ -86,6 +87,7 @@ export default function App() {
   function makeVoice(capture: CaptureFactory) {
     return new VoiceSession({ capture, transcribe: transcribe.current,
       onState: state => { if (mounted.current) setVoiceState(state); },
+      onSpeechStart: () => { if (mounted.current) { cancelTurn(); setError(''); } },
       onUtterance: text => { void submitRef.current(text); },
       onRecognized: result => { if (mounted.current) setLastRecognition(result); },
       onError: message => { if (mounted.current) { setError(message); setTextOpen(true); } },
@@ -170,10 +172,12 @@ export default function App() {
       setDecision(result);
       const clip = catalog.clips.find(item => item.id === result.clipId);
       if (!clip) throw new Error(result.reason);
-      played.current = [...played.current, clip.id].slice(-10);
-      append({ role: 'assistant', text: clip.text, clipId: clip.id });
       const playing = await playClip(clip, turn);
-      if (!playing && gate.current.accept(turn)) { setReplyBusy(false); speech.current?.resume(); }
+      if (!gate.current.accept(turn)) return;
+      // Reveal the written reply with playback; retain it as a fallback on failure.
+      append({ role: 'assistant', text: clip.text, clipId: clip.id });
+      if (playing) played.current = [...played.current, clip.id].slice(-10);
+      else { setReplyBusy(false); speech.current?.resume(); }
     } catch (cause) {
       if (controller.signal.aborted || !gate.current.accept(turn)) return;
       setError(cause instanceof Error ? cause.message : '连接暂时中断，请重试。');
@@ -201,13 +205,15 @@ export default function App() {
   };
   const readyAssets = catalog.assets.filter(asset => asset.status === 'ready');
   const idle = readyAssets.find(asset => asset.clipId === 'listen');
+  const thinking = readyAssets.find(asset => asset.clipId === 'thinking');
+  const waitingForReply = voiceState === 'transcribing' || (busy && active === null);
   const visible = catalog.clips.filter(clip => `${clip.title}${clip.intent}${clip.text}`.toLowerCase().includes(query.toLowerCase()));
   const voiceLabel = !voiceSupported ? '当前页面无法使用麦克风' : voiceState === 'off' ? '开始语音聊天'
-    : voiceState === 'responding' ? '打断并说话' : voiceState === 'transcribing' ? '重新说一句' : voiceState === 'starting' ? '开启麦克风 · 点击取消' : '正在倾听 · 点击暂停';
+    : voiceState === 'responding' ? '随时开口，我在听' : voiceState === 'transcribing' ? '我在听，可以接着说' : voiceState === 'starting' ? '开启麦克风 · 点击取消' : '正在倾听 · 点击暂停';
   const voiceHint = !voiceSupported ? '请在 localhost 或 HTTPS 页面使用麦克风，也可以直接打字。'
     : voiceState === 'off' ? '点一次，就能连续聊。声音在本机识别，不依赖浏览器语音服务。'
-    : voiceState === 'responding' ? '小岚说完会继续听，也可以随时打断。'
-    : voiceState === 'transcribing' ? '听到了，正在理解这句话。' : voiceState === 'starting' ? '首次使用，请允许浏览器访问麦克风。' : '直接说就好。不用重复点击，也不必急着开口。';
+    : voiceState === 'responding' ? '不用等我说完，直接开口就能打断。也可以点击上方按钮。'
+    : voiceState === 'transcribing' ? '想起什么可以继续补充，我会一起听。' : voiceState === 'starting' ? '首次使用，请允许浏览器访问麦克风。' : '直接说就好。不用重复点击，也不必急着开口。';
 
   return <div className="app-shell">
     <header className="site-header"><a className="brand" href="/" aria-label="Xtasy 首页"><AudioLines size={25} />xtasy<span>.</span></a><span className="header-note">一个随时接得上话的数字人</span><nav aria-label="工作室"><button onClick={() => openPanel('library')}><Film size={17} /><span>内容库</span></button><button className="icon-button" aria-label="设置" onClick={() => openPanel('settings')}><Settings2 size={19} /></button></nav></header>
@@ -215,10 +221,11 @@ export default function App() {
       <section className="avatar-panel" aria-label="小岚的动态画面">
         <img className="avatar-image" src="/avatar-reference.png" alt="虚构数字人小岚，坐在温暖的工作室里" />
         {idle && <video ref={idleVideo} className="idle-video" src={idle.url} autoPlay muted loop playsInline preload="auto" aria-label="持续倾听画面" onError={() => setError('倾听视频暂未加载成功，请刷新页面重试。')} />}
+        <ThinkingPresence url={thinking?.url} waiting={waitingForReply} />
         {[0, 1].map(slot => <video key={slot} ref={slot === 0 ? video0 : video1} className={`response-video ${active === slot ? 'is-visible' : ''}`} playsInline preload="auto" aria-hidden={active !== slot} aria-label={`小岚的回应 ${slot + 1}`} onEnded={() => ended(slot)} />)}
         <div className="avatar-shade" /><div className="avatar-top"><span className="avatar-name">小岚<span>虚拟数字人</span></span><button className="sound-button" aria-label={muted ? '开启声音' : '静音'} onClick={() => setMuted(value => !value)}>{muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button></div>
-        {current?.text && <p className="avatar-caption">{current.text}</p>}
-        {!current && <div className="avatar-welcome"><span>很高兴见到你</span><p>有话想聊，<br />我就在这里。</p></div>}
+        {active !== null && current?.text && <p className="avatar-caption">{current.text}</p>}
+        {!current && !busy && voiceState === 'off' && <div className="avatar-welcome"><span>很高兴见到你</span><p>有话想聊，<br />我就在这里。</p></div>}
       </section>
       <section className="conversation" aria-labelledby="conversation-title">
         <div className="conversation-heading"><div><span className="eyebrow">LET’S TALK</span><h1 id="conversation-title">和小岚聊聊</h1></div><button className="icon-button reset-button" aria-label="清空对话" onClick={() => { interrupt(); historyRef.current = []; setHistory([]); played.current = []; }}><RotateCcw size={17} /></button></div>
@@ -240,7 +247,7 @@ export default function App() {
     <dialog ref={dialog} className={`studio-dialog ${panel === 'library' ? 'library-dialog' : ''}`} onCancel={() => setPanel(null)} onClose={() => setPanel(null)} onClick={event => { if (event.target === event.currentTarget) setPanel(null); }} aria-labelledby="dialog-title">
       <div className="dialog-content"><div className="dialog-heading"><div><span className="eyebrow">YOUR STUDIO</span><h2 id="dialog-title">{panel === 'library' ? '小岚的内容库' : '工作室设置'}</h2></div><button className="icon-button" aria-label="关闭窗口" onClick={() => setPanel(null)}><X size={20} /></button></div>
         {panel === 'library' ? <><p className="dialog-intro">{readyAssets.length} 段视频已就绪。选择一段，听听小岚怎么说。</p><label className="search-box"><Search size={17} /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索话题或台词" aria-label="搜索内容库" /></label><div className="clip-grid">{visible.map(clip => <button className="clip-card" key={clip.id} onClick={() => audition(clip)} disabled={!catalog.assets.some(asset => asset.clipId === clip.id && (mode === 'preview' || asset.status === 'ready'))}><span className="clip-category">{clip.category}<span>{clip.duration}s</span></span><h3>{clip.title}</h3><p>{clip.text || '安静陪伴，自然眨眼与轻微动作。'}</p><span className="clip-play"><Play size={13} />播放这段</span></button>)}</div>{visible.length === 0 && <p className="empty-search">没有找到这个话题，试试「制作」或「接入」。</p>}<details className="advanced"><summary>制作与导出</summary><p>先验收代表样片，再使用 RunningHub 批量生成，最后通过 Hypit 统一导出。制作命令会使用你配置的账户额度，详见项目 README。</p><code>npm run production:plan</code><code>npm run production:batch</code><button className="text-button" onClick={() => saveJson('xtasy-catalog.json', catalog)}><ArrowDownToLine size={15} />导出台词与素材清单</button></details></>
-          : <><p className="dialog-intro">语音聊天会在回应结束后自动继续倾听。切到后台或打开工作室时，麦克风会关闭。</p><div className="service-row"><span>回应视频</span><span><Check size={15} />{readyAssets.length} / {catalog.clips.length} 已就绪</span></div><div className="service-row"><span>本地语音识别</span><span>{status?.asr?.state === 'ready' ? 'Whisper 已就绪' : status?.asr?.state === 'starting' ? '模型准备中' : '需要配置'}</span></div><div className="service-row"><span>Jev 语义判断</span><span>{status?.jevVerified || decision?.engine === 'jev' ? '已连接' : status?.jev ? '已配置' : '未配置'}</span></div><label className="mode-switch">对话模式<select value={mode} onChange={event => { cancelTurn(); setMode(event.target.value as 'preview' | 'live'); }}><option value="live">Jev 语义判断</option><option value="preview">本地关键词演示</option></select></label><details className="advanced"><summary>连接与判断详情</summary><p>在服务端 .env 设置 TYPESAFE_API_KEY 即可连接 Jev。重新制作视频还需要 RUNNINGHUB_API_KEY。凭证不会发送到浏览器。</p><p>浏览器只录音，本机 Whisper 负责转文字，随后由 Jev 选择视频。小岚回应时暂停收音；点击「打断并说话」可以接话。录音不落盘，对话文字仍会发给 Jev。</p>{decision && <dl><dt>最近选片</dt><dd>{decision.clipId ?? '无匹配'}</dd><dt>判断耗时</dt><dd>{decision.latencyMs} ms</dd><dt>引擎</dt><dd>{decision.model || decision.engine}</dd></dl>}<a href="https://github.com/hypit-ai/hypit" target="_blank" rel="noreferrer">Hypit 项目 <ChevronRight size={13} /></a></details></>}
+          : <><p className="dialog-intro">语音开启后会持续倾听，直接开口就能打断回应。切到后台或打开工作室时，麦克风会关闭。</p><div className="service-row"><span>回应视频</span><span><Check size={15} />{readyAssets.length} / {catalog.clips.length} 已就绪</span></div><div className="service-row"><span>本地语音识别</span><span>{status?.asr?.state === 'ready' ? 'Whisper 已就绪' : status?.asr?.state === 'starting' ? '模型准备中' : '需要配置'}</span></div><div className="service-row"><span>Jev 语义判断</span><span>{status?.jevVerified || decision?.engine === 'jev' ? '已连接' : status?.jev ? '已配置' : '未配置'}</span></div><label className="mode-switch">对话模式<select value={mode} onChange={event => { cancelTurn(); setMode(event.target.value as 'preview' | 'live'); }}><option value="live">Jev 语义判断</option><option value="preview">本地关键词演示</option></select></label><details className="advanced"><summary>连接与判断详情</summary><p>在服务端 .env 设置 TYPESAFE_API_KEY 即可连接 Jev。重新制作视频还需要 RUNNINGHUB_API_KEY。凭证不会发送到浏览器。</p><p>浏览器只录音，本机 Whisper 负责转文字，随后由 Jev 选择视频。小岚回应时也会收音，确认你开口后停止回应；识别期间的补充会和原话合并。录音不落盘，对话文字仍会发给 Jev。</p>{decision && <dl><dt>最近选片</dt><dd>{decision.clipId ?? '无匹配'}</dd><dt>判断耗时</dt><dd>{decision.latencyMs} ms</dd><dt>引擎</dt><dd>{decision.model || decision.engine}</dd></dl>}<a href="https://github.com/hypit-ai/hypit" target="_blank" rel="noreferrer">Hypit 项目 <ChevronRight size={13} /></a></details></>}
       </div>
     </dialog>
   </div>;
