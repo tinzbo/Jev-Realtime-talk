@@ -6,6 +6,33 @@ export class TurnGate {
   accept(id: number): boolean { return id === this.current; }
 }
 
+/** Bound startup as well as playback, without touching a reused element later. */
+export function startPlayback(video: HTMLVideoElement, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer); signal.removeEventListener('abort', aborted);
+      video.removeEventListener('error', failedMedia);
+    };
+    const failed = (error: unknown) => {
+      if (settled) return;
+      settled = true; cleanup(); video.pause(); reject(error);
+    };
+    const aborted = () => failed(new DOMException('Aborted', 'AbortError'));
+    const failedMedia = () => failed(new Error('视频播放失败'));
+    const timer = setTimeout(() => failed(new Error('视频启动超时')), 4000);
+    signal.addEventListener('abort', aborted, { once: true });
+    video.addEventListener('error', failedMedia, { once: true });
+    try {
+      void Promise.resolve(video.play()).then(() => {
+        if (settled) return;
+        settled = true; cleanup(); resolve();
+      }, failed);
+    } catch (error) { failed(error); }
+  });
+}
+
 /** Some audio-output failures leave play() resolved but the media clock frozen. */
 export function watchPlayback(video: HTMLVideoElement, signal: AbortSignal, onFailure: () => void, now = () => performance.now()): () => void {
   if (signal.aborted) return () => {};

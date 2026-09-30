@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowUp, AudioLines, Check, ChevronRight, Film, Keyboard, Mic, MicOff, Play, RotateCcw, Search, Settings2, Volume2, VolumeX, X } from 'lucide-react';
 import type { Catalog, Clip, Decision, ServiceStatus, Turn } from './types';
-import { TurnGate, readyVideo, decodedFrame, watchPlayback } from './playback';
+import { TurnGate, readyVideo, decodedFrame, watchPlayback, startPlayback } from './playback';
 import { VoiceSession, serverTranscriber, type VoiceState, type Transcription } from './voice';
 import { captureMicrophone, captureFixture, canCaptureAudio, type CaptureFactory } from './capture';
 
 const prompts = ['你能做什么？', '怎么批量制作数字人视频？', '怎么接入我的网站？'];
+type InteractionNotice = { message: string; clip?: Clip };
 const saveJson = (filename: string, data: unknown) => {
   const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
   const link = document.createElement('a'); link.href = url; link.download = filename; link.click();
@@ -27,7 +28,11 @@ export default function App() {
   const [current, setCurrent] = useState<Clip | null>(null);
   const [decision, setDecision] = useState<Decision | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
+  const [notice, setNotice] = useState<InteractionNotice | null>(null);
+  const noticeRef = useRef<InteractionNotice | null>(null);
+  const showNotice = (value: InteractionNotice | null) => { noticeRef.current = value; setNotice(value); };
+  const setError = (message: string) => showNotice(message ? { message } : null);
+  const error = notice?.message || '';
   const [muted, setMuted] = useState(false);
   const [mode, setMode] = useState<'preview' | 'live'>('live');
   const [panel, setPanel] = useState<'library' | 'settings' | null>(null);
@@ -61,6 +66,7 @@ export default function App() {
   const cancelTurn = useCallback(() => {
     gate.current.cancel(); routing.current?.abort(); media.current?.abort();
     video0.current?.pause(); video1.current?.pause();
+    if (noticeRef.current?.clip) showNotice(null);
     // Keep the listening video running underneath, without a reset/static frame.
     activeRef.current = null; setActive(null); setReplyBusy(false);
   }, []);
@@ -118,23 +124,33 @@ export default function App() {
       video.loop = clip.loop; video.dataset.silent = String(!clip.text); video.muted = mutedRef.current || !clip.text;
       await readyVideo(video, asset.url, controller.signal);
       if (!gate.current.accept(turn) || controller.signal.aborted) return false;
-      await video.play(); await decodedFrame(video, controller.signal);
+      await startPlayback(video, controller.signal); await decodedFrame(video, controller.signal);
       if (!gate.current.accept(turn) || controller.signal.aborted) return false;
       (next === 0 ? video1.current : video0.current)?.pause();
       slotTurns.current[next] = turn; activeRef.current = next; setActive(next); setCurrent(clip);
       watchPlayback(video, controller.signal, () => {
         if (!gate.current.accept(turn) || controller.signal.aborted || activeRef.current !== next) return;
         cancelTurn(); speech.current?.resume(); setTextOpen(true);
-        setError('视频播放停住了，请重试或检查浏览器的声音输出。也可以继续输入。');
+        showNotice({ clip, message: '视频播放停住了。你可以重播这段，也可以继续聊。' });
       });
       return true;
     } catch (cause) {
       if (!controller.signal.aborted && gate.current.accept(turn)) {
-        setError(cause instanceof DOMException && cause.name === 'NotAllowedError'
-          ? '浏览器暂未允许播放声音，请再点击一次语音按钮或话题。' : '这段视频暂时没能播放，请重试。');
+        showNotice({ clip, message: cause instanceof DOMException && cause.name === 'NotAllowedError'
+          ? '声音还没能播放。你可以重播这段，或静音看字幕。' : '这段视频暂时没能播放。你可以重播这段，也可以继续聊。' });
       }
       return false;
     }
+  };
+  const retryPlayback = (silent = false) => {
+    const clip = noticeRef.current?.clip;
+    if (!clip || busyRef.current) return;
+    cancelTurn(); setError(''); speech.current?.hold();
+    if (silent) { mutedRef.current = true; setMuted(true); }
+    const turn = gate.current.next(); setReplyBusy(true);
+    void playClip(clip, turn).then(playing => {
+      if (!playing && gate.current.accept(turn)) { setReplyBusy(false); speech.current?.resume(); }
+    });
   };
   const submit = async (text: string) => {
     const userText = text.trim().slice(0, 1500); if (!userText) return;
@@ -211,7 +227,7 @@ export default function App() {
             : history.map((turn, index) => <div key={index} className={`message ${turn.role}`}><span className="message-name">{turn.role === 'user' ? '你' : '小岚'}</span><p>{turn.text}</p></div>)}
         </div>
         <div className="interaction-dock">
-          {error && <div className="error-banner" role="alert"><p>{error}</p><button aria-label="关闭提示" onClick={() => setError('')}><X size={16} /></button></div>}
+          {error && <div className="error-banner" role="alert"><div className="error-copy"><p>{error}</p>{notice?.clip && <div className="playback-actions"><button disabled={busy} onClick={() => retryPlayback()}>重播这段</button>{notice.clip.text && !muted && <button disabled={busy} onClick={() => retryPlayback(true)}>静音播放</button>}</div>}</div><button aria-label="关闭提示" onClick={() => setError('')}><X size={16} /></button></div>}
           {fixtureMode && <div className="voice-fixture"><label>合成语音回归<select aria-label="内置合成语音" value={fixtureChoice} onChange={event => setFixtureChoice(event.target.value)}><option value="">选择一段话</option><option value="hello">你好，小岚</option><option value="batch">怎么批量制作数字人视频</option><option value="website">怎么把你接入我的网站</option><option value="stop">停一下</option><option value="weather">明天北京会下雨吗</option><option value="thanks">好的，谢谢你</option></select></label><input type="file" accept="audio/*" aria-label="选择测试语音" onChange={event => { setFixtureChoice(''); setFixtureFile(event.target.files?.[0] || null); }} /><button disabled={!fixtureFile} onClick={() => { cancelTurn(); setError(''); setLastRecognition(null); speech.current?.dispose(); speech.current = makeVoice(captureFixture(fixtureFile!)); void speech.current.start(); }}>运行语音样例</button><output>{lastRecognition ? `${lastRecognition.text} · ${lastRecognition.latencyMs} ms · ${lastRecognition.engine}` : '等待合成语音输入；不启用真实麦克风'}</output></div>}
           <button className={`voice-button ${voiceState === 'listening' ? 'is-listening' : ''}`} onClick={voiceAction} disabled={!voiceSupported} aria-label={voiceState === 'starting' || voiceState === 'listening' ? '暂停语音聊天' : voiceLabel}>{voiceState === 'listening' ? <AudioLines size={24} /> : <Mic size={24} />}<span>{voiceLabel}</span></button>
           <p className="voice-hint">{voiceHint}</p><div className="input-options"><button aria-expanded={textOpen} aria-controls="text-composer" onClick={() => setTextOpen(value => !value)}><Keyboard size={16} />{textOpen ? '收起文字输入' : '也可以打字'}</button>{voiceState !== 'off' ? <button onClick={() => { speech.current?.stop(); cancelTurn(); }}><MicOff size={15} />结束语音</button> : busy && <button onClick={interrupt}>打断回应</button>}</div>
